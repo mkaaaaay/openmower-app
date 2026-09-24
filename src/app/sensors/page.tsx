@@ -57,6 +57,15 @@ function formatUnit(unit: string): string {
   return unit;
 }
 
+// xbot_positioning.cpp hardcodes exactly 999 as "no GPS fix / EKF has no absolute pose" for
+// this one sensor — showing it as "999.00 m" reads like a real (huge) accuracy reading
+const NO_GPS_FIX_SENSOR_ID = 'om_gps_accuracy';
+const NO_GPS_FIX_VALUE = 999;
+// IdleBehavior.cpp and DockingBehavior.cpp both turn GPS off on/near entering these states
+// (back on when mowing/undocking starts) to save power while parked/docked — so "no fix"
+// there is by design, not a signal problem
+const GPS_DISABLED_BY_DESIGN_STATES = new Set(['IDLE', 'DOCKING']);
+
 function isCritical(info: SensorInfo, raw: string | undefined, currentState: string | undefined): boolean {
   if (raw === undefined || info.value_type !== 'DOUBLE') return false;
   // 0 rpm is normal outside MOWING, don't flag it as a stall
@@ -112,12 +121,20 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
   const theme = useTheme();
   const raw = useSelectedMower((m) => m?.sensorData[info.sensor_id]);
   const currentState = useSelectedMower((m) => m?.state.current_state);
+  const isCharging = useSelectedMower((m) => m?.state.is_charging);
   const value = info.value_type === 'DOUBLE' ? Number(raw) : undefined;
-  const displayValue =
-    info.value_type === 'DOUBLE'
-      ? value !== undefined && !Number.isNaN(value)
-        ? `${value.toFixed(2)} ${formatUnit(info.unit)}`.trim()
-        : '–'
+  const numericValue = value !== undefined && !Number.isNaN(value) ? value : undefined;
+  const noGpsFix = info.sensor_id === NO_GPS_FIX_SENSOR_ID && numericValue !== undefined && numericValue >= NO_GPS_FIX_VALUE;
+  const gpsOffByDesign = noGpsFix && currentState !== undefined && GPS_DISABLED_BY_DESIGN_STATES.has(currentState);
+  // is_charging is only true while physically in the dock — a safe proxy, since IDLE alone can
+  // also mean "paused out on the lawn", where GPS is off too but not because of the dock
+  const inDockingStation = gpsOffByDesign && !!isCharging;
+  const displayValue = noGpsFix
+    ? gpsOffByDesign
+      ? 'GPS off'
+      : 'No fix'
+    : numericValue !== undefined
+      ? `${numericValue.toFixed(2)} ${formatUnit(info.unit)}`.trim()
       : (raw ?? '–');
   const critical = isCritical(info, raw, currentState);
   const pairedStateId = PAIRED_STATE_SENSOR[info.sensor_id];
@@ -134,6 +151,11 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
           </Typography>
           {pairedStateId && <PairedStateChip sensorId={pairedStateId} />}
         </Box>
+        {inDockingStation && (
+          <Typography variant="caption" color="text.secondary">
+            (Docking Station)
+          </Typography>
+        )}
         <SensorGauge info={info} raw={raw} />
       </CardContent>
     </Card>
