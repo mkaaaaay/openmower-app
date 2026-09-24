@@ -63,8 +63,10 @@ function isCritical(info: SensorInfo, raw: string | undefined, currentState: str
   if (info.value_description === 'REVOLUTIONS' && currentState !== 'MOWING') return false;
   const value = Number(raw);
   if (Number.isNaN(value)) return false;
-  if (info.has_critical_low && value <= info.lower_critical_value) return true;
-  if (info.has_critical_high && value >= info.upper_critical_value) return true;
+  // -1 is the firmware's "unset" sentinel for every threshold (see computeGaugeScale) — ignore it
+  // here too, otherwise an unresolved sentinel makes every reading look permanently critical
+  if (info.has_critical_low && info.lower_critical_value >= 0 && value <= info.lower_critical_value) return true;
+  if (info.has_critical_high && info.upper_critical_value >= 0 && value >= info.upper_critical_value) return true;
   return false;
 }
 

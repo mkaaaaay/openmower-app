@@ -20,16 +20,18 @@ const GREEN = '#43a047';
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-// null if the sensor has no min/max or critical thresholds at all
+// The firmware's "unset" sentinel for every threshold is -1, but the code that sets
+// has_critical_low/has_critical_high only checks "value != 0" — so an unresolved sentinel can
+// leak through as has_critical_high: true, upper_critical_value: -1, which would make every real
+// (non-negative) reading look permanently critical. Treat negative thresholds as unset here.
 export function computeGaugeScale(info: SensorInfo): GaugeScale | null {
-  if (!info.has_min_max && !info.has_critical_low && !info.has_critical_high) return null;
+  const hasCriticalLow = info.has_critical_low && info.lower_critical_value >= 0;
+  const hasCriticalHigh = info.has_critical_high && info.upper_critical_value >= 0;
+  const hasMinMax = info.has_min_max && info.min_value >= 0 && info.max_value >= 0;
+  if (!hasMinMax && !hasCriticalLow && !hasCriticalHigh) return null;
 
-  const lowBound = info.has_critical_low ? info.lower_critical_value : info.has_min_max ? info.min_value : 0;
-  const highBound = info.has_critical_high
-    ? info.upper_critical_value
-    : info.has_min_max
-      ? info.max_value
-      : lowBound + 1;
+  const lowBound = hasCriticalLow ? info.lower_critical_value : hasMinMax ? info.min_value : 0;
+  const highBound = hasCriticalHigh ? info.upper_critical_value : hasMinMax ? info.max_value : lowBound + 1;
 
   const span = highBound - lowBound || 1;
   const pad = span * 0.15;
@@ -37,21 +39,21 @@ export function computeGaugeScale(info: SensorInfo): GaugeScale | null {
   const domainMax = highBound + pad;
 
   const zones: GaugeZone[] = [];
-  if (info.has_critical_low) {
+  if (hasCriticalLow) {
     zones.push({from: domainMin, to: info.lower_critical_value, color: RED});
   }
-  if (info.has_min_max) {
-    const yellowLowStart = info.has_critical_low ? info.lower_critical_value : domainMin;
+  if (hasMinMax) {
+    const yellowLowStart = hasCriticalLow ? info.lower_critical_value : domainMin;
     if (yellowLowStart < info.min_value) zones.push({from: yellowLowStart, to: info.min_value, color: YELLOW});
     zones.push({from: info.min_value, to: info.max_value, color: GREEN});
-    const yellowHighEnd = info.has_critical_high ? info.upper_critical_value : domainMax;
+    const yellowHighEnd = hasCriticalHigh ? info.upper_critical_value : domainMax;
     if (info.max_value < yellowHighEnd) zones.push({from: info.max_value, to: yellowHighEnd, color: YELLOW});
   } else {
-    const midStart = info.has_critical_low ? info.lower_critical_value : domainMin;
-    const midEnd = info.has_critical_high ? info.upper_critical_value : domainMax;
+    const midStart = hasCriticalLow ? info.lower_critical_value : domainMin;
+    const midEnd = hasCriticalHigh ? info.upper_critical_value : domainMax;
     if (midEnd > midStart) zones.push({from: midStart, to: midEnd, color: GREEN});
   }
-  if (info.has_critical_high) {
+  if (hasCriticalHigh) {
     zones.push({from: info.upper_critical_value, to: domainMax, color: RED});
   }
 
