@@ -29,6 +29,7 @@ import {
   mapSchema,
   positionSchema,
   rosParamsSchema,
+  sensorInfosSchema,
   simStateSchema,
   stateDefaults,
   stateSchema,
@@ -37,6 +38,7 @@ import {
   type MapData,
   type PositionWithAttributes,
   type RosParams,
+  type SensorInfo,
   type SimState,
   type StateOptionalPose,
   type TrackAttributes,
@@ -62,6 +64,9 @@ class Mower {
   track: TrackPipeline = new TrackPipeline();
   jobList: {job_id: string; epoch: number}[] | null = null;
   events: MowerEventState = mowerEventDefaults;
+  sensorInfos: SensorInfo[] = [];
+  // sensors/<id>/data is plain text, not JSON
+  sensorData: Record<string, string> = {};
   // null until a retained sim/state/json message arrives — also used as the
   // "is this a simulator?" feature-detection flag.
   simState: SimState | null = null;
@@ -169,6 +174,8 @@ export const useMowersStore = create<MowersStore>()(
             client.subscribe(clientMower.prefix + 'params/json');
             client.subscribe(clientMower.prefix + 'events/json');
             client.subscribe(clientMower.prefix + 'sim/state/json');
+            client.subscribe(clientMower.prefix + 'sensor_infos/json');
+            client.subscribe(clientMower.prefix + 'sensors/+/data');
             mowers[clientMower.idx].rpc.events.history
               .list()
               .then((dates) => {
@@ -272,6 +279,18 @@ export const useMowersStore = create<MowersStore>()(
                 if (parsed.success) {
                   state.mowers[idx].simState = parsed.data;
                 }
+              });
+            } else if (partialTopic === 'sensor_infos/json') {
+              set((state) => {
+                const parsed = sensorInfosSchema.safeParse(JSON.parse(payload.toString()));
+                if (parsed.success) {
+                  state.mowers[idx].sensorInfos = parsed.data;
+                }
+              });
+            } else if (partialTopic.startsWith('sensors/') && partialTopic.endsWith('/data')) {
+              const sensorId = partialTopic.slice('sensors/'.length, -'/data'.length);
+              set((state) => {
+                state.mowers[idx].sensorData[sensorId] = payload.toString();
               });
             }
           }

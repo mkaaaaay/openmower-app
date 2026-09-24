@@ -226,6 +226,28 @@ export const stateDefaults: StateOptionalPose = {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Sensors (sensor_infos/json + sensors/<id>/data)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const sensorInfoSchema = z.object({
+  sensor_id: z.string(),
+  sensor_name: z.string(),
+  value_type: z.string(), // "DOUBLE" | "STRING" so far, kept loose for forward-compat
+  value_description: z.string(),
+  unit: z.string(),
+  has_min_max: numericBoolean,
+  min_value: z.number(),
+  max_value: z.number(),
+  has_critical_low: numericBoolean,
+  lower_critical_value: z.number(),
+  has_critical_high: numericBoolean,
+  upper_critical_value: z.number(),
+});
+
+export const sensorInfosSchema = z.array(sensorInfoSchema);
+export type SensorInfo = z.infer<typeof sensorInfoSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // ROS params
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
