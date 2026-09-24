@@ -61,6 +61,9 @@ function formatUnit(unit: string): string {
 // this one sensor — showing it as "999.00 m" reads like a real (huge) accuracy reading
 const NO_GPS_FIX_SENSOR_ID = 'om_gps_accuracy';
 const NO_GPS_FIX_VALUE = 999;
+// shows the precise battery % (from robot_state/json) as the headline value on this one card,
+// with the raw voltage underneath — more meaningful than the voltage alone
+const BATTERY_PERCENTAGE_SENSOR_ID = 'om_v_battery';
 // IdleBehavior.cpp and DockingBehavior.cpp both turn GPS off on/near entering these states
 // (back on when mowing/undocking starts) to save power while parked/docked — so "no fix"
 // there is by design, not a signal problem
@@ -93,7 +96,9 @@ const SensorGauge = memo(function SensorGauge({info, raw}: {info: SensorInfo; ra
     return <RadialGauge value={value} scale={scale} />;
   }
 
-  if (info.value_description === 'VOLTAGE' || info.value_description === 'CURRENT') {
+  // Voltage gauges turned out to add no real value — the useful range is a tiny sliver of
+  // whatever domain we'd pick, so it's just a plain number for those now.
+  if (info.value_description === 'CURRENT') {
     const scale = computeGaugeScale(info) ?? fallbackGaugeScale(value);
     return <VerticalGauge value={value} scale={scale} />;
   }
@@ -122,6 +127,7 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
   const raw = useSelectedMower((m) => m?.sensorData[info.sensor_id]);
   const currentState = useSelectedMower((m) => m?.state.current_state);
   const isCharging = useSelectedMower((m) => m?.state.is_charging);
+  const batteryPercentage = useSelectedMower((m) => (info.sensor_id === BATTERY_PERCENTAGE_SENSOR_ID ? m?.state.battery_percentage : undefined));
   const value = info.value_type === 'DOUBLE' ? Number(raw) : undefined;
   const numericValue = value !== undefined && !Number.isNaN(value) ? value : undefined;
   const noGpsFix = info.sensor_id === NO_GPS_FIX_SENSOR_ID && numericValue !== undefined && numericValue >= NO_GPS_FIX_VALUE;
@@ -145,12 +151,23 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
         <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 0.5}}>
           {info.sensor_name}
         </Typography>
-        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-          <Typography variant="h6" fontWeight="bold" color={critical ? 'error' : 'text.primary'}>
-            {displayValue}
-          </Typography>
-          {pairedStateId && <PairedStateChip sensorId={pairedStateId} />}
-        </Box>
+        {batteryPercentage !== undefined ? (
+          <>
+            <Typography variant="h4" fontWeight="bold" color={critical ? 'error' : 'text.primary'}>
+              {batteryPercentage}%
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {displayValue}
+            </Typography>
+          </>
+        ) : (
+          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+            <Typography variant="h6" fontWeight="bold" color={critical ? 'error' : 'text.primary'}>
+              {displayValue}
+            </Typography>
+            {pairedStateId && <PairedStateChip sensorId={pairedStateId} />}
+          </Box>
+        )}
         {inDockingStation && (
           <Typography variant="caption" color="text.secondary">
             (Docking Station)
