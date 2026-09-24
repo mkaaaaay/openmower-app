@@ -6,9 +6,29 @@ import {outerCardStyles} from '@/lib/cardStyles';
 import {useSelectedMower} from '@/stores/mowersStore';
 import type {SensorInfo} from '@/stores/schemas';
 
-import {BatteryFull as BatteryIcon, CheckCircle as CheckIcon, GpsFixed as GpsIcon, Sensors as SensorsIcon} from '@mui/icons-material';
+import {
+  Battery20,
+  Battery30,
+  Battery50,
+  Battery60,
+  Battery80,
+  Battery90,
+  BatteryAlert,
+  BatteryCharging20,
+  BatteryCharging30,
+  BatteryCharging50,
+  BatteryCharging60,
+  BatteryCharging80,
+  BatteryCharging90,
+  BatteryChargingFull,
+  BatteryFull as BatteryIcon,
+  CheckCircle as CheckIcon,
+  GpsFixed as GpsIcon,
+  Sensors as SensorsIcon,
+} from '@mui/icons-material';
 import {Box, Card, CardContent, Chip, Typography, useTheme} from '@mui/material';
 import {memo, useMemo} from 'react';
+import type {SvgIconComponent} from '@mui/icons-material';
 
 const stateColor = (state: string | undefined) => {
   switch (state) {
@@ -26,9 +46,8 @@ const stateColor = (state: string | undefined) => {
   }
 };
 
-// shown as a chip on their paired sensor's card instead of their own card
-const PAIRED_STATE_SENSOR: Record<string, string> = {om_charge_current: 'om_charge_state'};
-const ABSORBED_SENSOR_IDS = new Set(Object.values(PAIRED_STATE_SENSOR));
+// rendered as one consolidated BatterySummaryCard instead of individual sensor cards — see below
+const BATTERY_CATEGORY_SENSOR_IDS = new Set(['om_v_battery', 'om_v_charge', 'om_charge_current', 'om_charge_state']);
 
 const CATEGORY_ORDER = ['Battery & Charging', 'Temperatures', 'Mow Motor', 'Other'] as const;
 
@@ -61,9 +80,6 @@ function formatUnit(unit: string): string {
 // this one sensor — showing it as "999.00 m" reads like a real (huge) accuracy reading
 const NO_GPS_FIX_SENSOR_ID = 'om_gps_accuracy';
 const NO_GPS_FIX_VALUE = 999;
-// shows the precise battery % (from robot_state/json) as the headline value on this one card,
-// with the raw voltage underneath — more meaningful than the voltage alone
-const BATTERY_PERCENTAGE_SENSOR_ID = 'om_v_battery';
 // IdleBehavior.cpp and DockingBehavior.cpp both turn GPS off on/near entering these states
 // (back on when mowing/undocking starts) to save power while parked/docked — so "no fix"
 // there is by design, not a signal problem
@@ -114,20 +130,12 @@ function chargeStateColor(raw: string): 'success' | 'info' | 'default' {
   return 'default';
 }
 
-// subscribed separately so it doesn't re-render the numeric card above
-function PairedStateChip({sensorId}: {sensorId: string}) {
-  const raw = useSelectedMower((m) => m?.sensorData[sensorId]);
-  if (!raw) return null;
-  return <Chip label={raw} size="small" color={chargeStateColor(raw)} sx={{fontWeight: 600}} />;
-}
-
 // subscribes to only its own sensor value to avoid re-rendering every card
 const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
   const theme = useTheme();
   const raw = useSelectedMower((m) => m?.sensorData[info.sensor_id]);
   const currentState = useSelectedMower((m) => m?.state.current_state);
   const isCharging = useSelectedMower((m) => m?.state.is_charging);
-  const batteryPercentage = useSelectedMower((m) => (info.sensor_id === BATTERY_PERCENTAGE_SENSOR_ID ? m?.state.battery_percentage : undefined));
   const value = info.value_type === 'DOUBLE' ? Number(raw) : undefined;
   const numericValue = value !== undefined && !Number.isNaN(value) ? value : undefined;
   const noGpsFix = info.sensor_id === NO_GPS_FIX_SENSOR_ID && numericValue !== undefined && numericValue >= NO_GPS_FIX_VALUE;
@@ -143,7 +151,6 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
       ? `${numericValue.toFixed(2)} ${formatUnit(info.unit)}`.trim()
       : (raw ?? '–');
   const critical = isCritical(info, raw, currentState);
-  const pairedStateId = PAIRED_STATE_SENSOR[info.sensor_id];
 
   return (
     <Card sx={{...outerCardStyles(theme), minWidth: 160, flex: '1 0 160px'}}>
@@ -151,23 +158,9 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
         <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 0.5}}>
           {info.sensor_name}
         </Typography>
-        {batteryPercentage !== undefined ? (
-          <>
-            <Typography variant="h4" fontWeight="bold" color={critical ? 'error' : 'text.primary'}>
-              {batteryPercentage}%
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {displayValue}
-            </Typography>
-          </>
-        ) : (
-          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-            <Typography variant="h6" fontWeight="bold" color={critical ? 'error' : 'text.primary'}>
-              {displayValue}
-            </Typography>
-            {pairedStateId && <PairedStateChip sensorId={pairedStateId} />}
-          </Box>
-        )}
+        <Typography variant="h6" fontWeight="bold" color={critical ? 'error' : 'text.primary'}>
+          {displayValue}
+        </Typography>
         {inDockingStation && (
           <Typography variant="caption" color="text.secondary">
             (Docking Station)
@@ -178,6 +171,79 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
     </Card>
   );
 });
+
+// nearest-breakpoint battery icon, mirroring the phone status bar convention users already know
+function batteryLevelIcon(percentage: number, charging: boolean): SvgIconComponent {
+  const bars: [number, SvgIconComponent, SvgIconComponent][] = [
+    [20, Battery20, BatteryCharging20],
+    [30, Battery30, BatteryCharging30],
+    [50, Battery50, BatteryCharging50],
+    [60, Battery60, BatteryCharging60],
+    [80, Battery80, BatteryCharging80],
+    [90, Battery90, BatteryCharging90],
+    [100, BatteryIcon, BatteryChargingFull],
+  ];
+  if (percentage <= 10) return BatteryAlert;
+  const [, plain, chargingIcon] = bars.find(([threshold]) => percentage <= threshold) ?? bars[bars.length - 1];
+  return charging ? chargingIcon : plain;
+}
+
+// Consolidated view of Battery & Charging: percentage + charge status is the actual answer to
+// "how's the battery doing", the four raw sensor readings are just supporting detail underneath.
+function BatterySummaryCard({sensorInfos}: {sensorInfos: SensorInfo[]}) {
+  const theme = useTheme();
+  const currentState = useSelectedMower((m) => m?.state.current_state);
+  const isCharging = useSelectedMower((m) => m?.state.is_charging);
+  const batteryPercentage = useSelectedMower((m) => m?.state.battery_percentage);
+  const vBattery = useSelectedMower((m) => m?.sensorData['om_v_battery']);
+  const vCharge = useSelectedMower((m) => m?.sensorData['om_v_charge']);
+  const chargeCurrent = useSelectedMower((m) => m?.sensorData['om_charge_current']);
+  const chargeState = useSelectedMower((m) => m?.sensorData['om_charge_state']);
+
+  const critical = ['om_v_battery', 'om_v_charge', 'om_charge_current'].some((id) => {
+    const info = sensorInfos.find((i) => i.sensor_id === id);
+    const raw = id === 'om_v_battery' ? vBattery : id === 'om_v_charge' ? vCharge : chargeCurrent;
+    return info ? isCritical(info, raw, currentState) : false;
+  });
+
+  const details: {label: string; value: string}[] = [
+    vBattery !== undefined ? {label: 'Battery', value: `${Number(vBattery).toFixed(2)} V`} : null,
+    vCharge !== undefined ? {label: 'Charger', value: `${Number(vCharge).toFixed(2)} V`} : null,
+    chargeCurrent !== undefined ? {label: 'Current', value: `${Number(chargeCurrent).toFixed(2)} A`} : null,
+  ].filter((part): part is {label: string; value: string} => part !== null);
+
+  const BatteryLevelIcon = batteryLevelIcon(batteryPercentage ?? 0, !!isCharging);
+  const iconColor = critical ? 'error' : batteryPercentage !== undefined && batteryPercentage <= 20 ? 'warning' : 'success';
+
+  return (
+    <Card sx={{...outerCardStyles(theme), minWidth: 220, flex: '1 0 220px'}}>
+      <CardContent sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 1}}>
+        <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 0.5}}>
+          Battery
+        </Typography>
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+          <BatteryLevelIcon color={iconColor} sx={{fontSize: 36}} />
+          <Typography variant="h3" fontWeight="bold" color={critical ? 'error' : 'text.primary'}>
+            {batteryPercentage ?? '–'}%
+          </Typography>
+        </Box>
+        {chargeState && <Chip label={chargeState} size="small" variant="outlined" color={chargeStateColor(chargeState)} />}
+        {details.length > 0 && (
+          <Box sx={{display: 'flex', gap: 2, mt: 0.5}}>
+            {details.map(({label, value}) => (
+              <Box key={label}>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {label}
+                </Typography>
+                <Typography variant="caption">{value}</Typography>
+              </Box>
+            ))}
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 // isolated so this doesn't re-render the whole gauge grid on each tick
 function CriticalCountStat({sensorInfos}: {sensorInfos: SensorInfo[]}) {
@@ -235,11 +301,13 @@ export default function SensorsPage() {
                   {category}
                 </Typography>
                 <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 2}}>
-                  {sensors
-                    .filter((info) => !ABSORBED_SENSOR_IDS.has(info.sensor_id))
-                    .map((info) => (
-                      <SensorCard key={info.sensor_id} info={info} />
-                    ))}
+                  {category === 'Battery & Charging' ? (
+                    <BatterySummaryCard sensorInfos={sensors} />
+                  ) : (
+                    sensors
+                      .filter((info) => !BATTERY_CATEGORY_SENSOR_IDS.has(info.sensor_id))
+                      .map((info) => <SensorCard key={info.sensor_id} info={info} />)
+                  )}
                 </Box>
               </Box>
             ))}
