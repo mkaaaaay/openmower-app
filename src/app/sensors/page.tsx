@@ -214,7 +214,7 @@ function BatterySummaryCard({sensorInfos}: {sensorInfos: SensorInfo[]}) {
 
   const details: {label: string; value: string}[] = [
     vBattery !== undefined ? {label: 'Battery', value: `${Number(vBattery).toFixed(2)} V`} : null,
-    vCharge !== undefined ? {label: 'Charger', value: `${Number(vCharge).toFixed(2)} V`} : null,
+    vCharge !== undefined && isCharging ? {label: 'Charger', value: `${Number(vCharge).toFixed(2)} V`} : null,
     chargeCurrent !== undefined ? {label: 'Current', value: `${Number(chargeCurrent).toFixed(2)} A`} : null,
   ].filter((part): part is {label: string; value: string} => part !== null);
 
@@ -325,9 +325,14 @@ function StateChips() {
   const state = useSelectedMower((m) => m?.state);
   return (
     <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', mb: 3}}>
-      <Chip label={state?.current_state ?? 'UNKNOWN'} color={stateColor(state?.current_state)} icon={<CheckIcon />} />
-      <Chip label={state?.is_charging ? 'Charging' : 'Not charging'} size="small" />
-      <Chip label={state?.emergency ? 'Emergency active' : 'No emergency'} color={state?.emergency ? 'error' : 'default'} size="small" />
+      <Chip
+        label={state?.current_state ?? 'UNKNOWN'}
+        color={stateColor(state?.current_state)}
+        icon={<CheckIcon />}
+        size="small"
+      />
+      {state?.is_charging && <Chip label="Charging" color="success" size="small" />}
+      {state?.emergency && <Chip label="Emergency active" color="error" size="small" />}
     </Box>
   );
 }
