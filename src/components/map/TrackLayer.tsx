@@ -16,6 +16,12 @@ const linePaint: LineLayerSpecification['paint'] = {
   'line-opacity': ['case', ['==', ['get', 'blades'], true], 1, 0.5] as ExpressionSpecification,
   'line-dasharray': ['case', ['==', ['get', 'blades'], true], ['literal', [1, 0]], ['literal', [3, 3]]],
 };
+// Subtler version for edit mode - enough to see the mowed stripe pattern for context while
+// reshaping an outline, without competing with the vertex-editing UI on top of it.
+const dimmedLinePaint: LineLayerSpecification['paint'] = {
+  ...linePaint,
+  'line-opacity': ['case', ['==', ['get', 'blades'], true], 0.35, 0.15] as ExpressionSpecification,
+};
 const pointPaint = {'circle-radius': 3, 'circle-color': '#1565C0', 'circle-opacity': 0.6} as const;
 
 const emptyLine: Feature<LineString> = {
@@ -30,21 +36,23 @@ interface TrackLayerProps {
   visible?: boolean;
   pastTrack?: PastTrack | null;
   loading?: boolean;
+  dimmed?: boolean;
 }
 
-export default function TrackLayer({visible = true, pastTrack = null, loading = false}: TrackLayerProps) {
+export default function TrackLayer({visible = true, pastTrack = null, loading = false, dimmed = false}: TrackLayerProps) {
   const {live, history} = useTrackFeatures(pastTrack, loading);
 
   const visibility = visible ? 'visible' : 'none';
   const layout: LineLayerSpecification['layout'] = {'line-join': 'round', 'line-cap': 'butt', visibility};
+  const paint = dimmed ? dimmedLinePaint : linePaint;
 
   return (
     <>
       <RSource id="track-history-source" type="geojson" data={history ?? emptyLineCollection} />
-      <RLayer id="track-history-layer" source="track-history-source" type="line" layout={layout} paint={linePaint} />
+      <RLayer id="track-history-layer" source="track-history-source" type="line" layout={layout} paint={paint} />
 
       <RSource id="track-live-source" type="geojson" data={live ?? emptyLine} />
-      <RLayer id="track-live-layer" source="track-live-source" type="line" layout={layout} paint={linePaint} />
+      <RLayer id="track-live-layer" source="track-live-source" type="line" layout={layout} paint={paint} />
 
       {SHOW_TRACK_POINTS && <TrackPointsLayer live={live} history={history} />}
     </>

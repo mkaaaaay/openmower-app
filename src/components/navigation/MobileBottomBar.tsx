@@ -55,8 +55,16 @@ export default function MobileBottomBar({onMenuOpen}: MobileBottomBarProps) {
           }}
           sx={{
             bgcolor: 'transparent',
+            // More items than comfortably fit a phone width — scroll horizontally
+            // with a fixed per-item width instead of squeezing every icon down to
+            // a sliver at the edges.
+            overflowX: 'auto',
+            justifyContent: 'flex-start',
+            px: 1,
             '& .MuiBottomNavigationAction-root': {
               color: theme.palette.text.secondary,
+              minWidth: 72,
+              flex: '0 0 auto',
               '&.Mui-selected': {
                 color: theme.palette.primary.main,
               },

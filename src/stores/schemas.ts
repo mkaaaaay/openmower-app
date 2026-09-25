@@ -226,6 +226,59 @@ export const stateDefaults: StateOptionalPose = {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Sensors (sensor_infos/json + sensors/<id>/data)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const sensorInfoSchema = z.object({
+  sensor_id: z.string(),
+  sensor_name: z.string(),
+  value_type: z.string(), // "DOUBLE" | "STRING" so far, kept loose for forward-compat
+  value_description: z.string(),
+  unit: z.string(),
+  has_min_max: numericBoolean,
+  min_value: z.number(),
+  max_value: z.number(),
+  has_critical_low: numericBoolean,
+  lower_critical_value: z.number(),
+  has_critical_high: numericBoolean,
+  upper_critical_value: z.number(),
+});
+
+export const sensorInfosSchema = z.array(sensorInfoSchema);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Actions (actions/json topic — which high-level commands are available right now)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const actionInfoSchema = z.object({
+  action_id: z.string(),
+  action_name: z.string(),
+  enabled: numericBoolean, // wire format is 0/1, not JSON true/false
+});
+
+export const actionInfosSchema = z.array(actionInfoSchema);
+export type ActionInfo = z.infer<typeof actionInfoSchema>;
+export type SensorInfo = z.infer<typeof sensorInfoSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Map overlay (map_overlay/json topic — live in-progress area-recording polygon)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const mapOverlayPolygonSchema = z.object({
+  poly: z.array(z.object({x: z.number(), y: z.number()})),
+  is_closed: z.boolean(),
+  line_width: z.number(),
+  color: z.string(),
+});
+
+export const mapOverlaySchema = z.object({
+  polygons: z.array(mapOverlayPolygonSchema),
+});
+
+export type MapOverlay = z.infer<typeof mapOverlaySchema>;
+export type MapOverlayPolygon = z.infer<typeof mapOverlayPolygonSchema>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // ROS params
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -238,6 +291,7 @@ export const rosParamsSchema = z
     '/ll/services/gps/datum_lat': z.number(),
     '/ll/services/gps/datum_long': z.number(),
     '/ll/services/gps/datum_height': z.number(),
+    '/mower_logic/tool_width': z.number(),
   })
   .partial()
   .catchall(z.unknown());

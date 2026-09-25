@@ -3,7 +3,7 @@
 import {useFitToBounds, useMapboxDraw, useMapContext, useMapHover} from '@/contexts/MapContext';
 import {useJobTrack} from '@/hooks/useJobTrack';
 import {useMapDisplayStore} from '@/stores/mapDisplayStore';
-import {useSelectedMower} from '@/stores/mowersStore';
+import {useSelectedMower, type Mower} from '@/stores/mowersStore';
 import {MapData, type AreaProps} from '@/stores/schemas';
 import type {AreaFeature} from '@/types/geojson';
 import {generateId, splitPolygonWithLine} from '@/utils/area-utils';
@@ -13,12 +13,13 @@ import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import {Box, useMediaQuery, useTheme, type SxProps} from '@mui/material';
 import {featureCollection} from '@turf/helpers';
 import type {Feature, LineString, Polygon} from 'geojson';
-import {FocusIcon, LayoutListIcon, PencilIcon} from 'lucide-react';
+import {FocusIcon, LayoutListIcon, PencilIcon, RouteIcon} from 'lucide-react';
 import type {Map} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {RFullscreenControl, RMap} from 'maplibre-react-components';
 import {useCallback, useEffect, useEffectEvent, useMemo, useRef} from 'react';
 import {DialogOutlet, useDialog} from 'react-dialog-async';
+import AreaRecordingPanel from './AreaRecordingPanel';
 import AreasList from './AreasList';
 import ControlButton from './ControlButton';
 import DockingStationMarker from './DockingStationMarker';
@@ -31,11 +32,15 @@ import {IssuesButton} from './edit/IssuesButton';
 import {UploadButton} from './edit/UploadButton';
 import LayersButton from './LayersButton';
 import MapDialog from './MapDialog';
+import MapOverlayLayer from './MapOverlayLayer';
 import {mapStyles} from './mapStyles';
 import MowerMarker from './MowerMarker';
 import SimulatorButton from './SimulatorButton';
+import StripePreviewLayer from './StripePreviewLayer';
 import TeleopControls from './teleop/TeleopControls';
 import TrackLayer from './TrackLayer';
+
+const START_AREA_RECORDING_ACTION = 'mower_logic:idle/start_area_recording';
 
 interface MowerMapProps {
   mapData: MapData;
@@ -64,7 +69,10 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
   const mowerPosition = useSelectedMower((s) => s?.position ?? s?.state.pose);
   const simAvailable = useSelectedMower((s) => s?.simState != null);
   const manualDrive = useSelectedMower((s) => s?.simState?.joy_override ?? false);
-  const showTeleop = (currentState === 'AREA_RECORDING' || manualDrive) && !editMode;
+  const isAreaRecording = currentState === 'AREA_RECORDING';
+  const showTeleop = (isAreaRecording || manualDrive) && !editMode;
+  const canStartAreaRecording = useSelectedMower((s) => s?.hasAction(START_AREA_RECORDING_ACTION) ?? false);
+  const mowerForActions = useSelectedMower<Mower | undefined>((m) => m);
   const areas = useMemo(
     () => features.features.filter((feature) => feature.geometry.type === 'Polygon') as Feature<Polygon, AreaProps>[],
     [features],
@@ -237,7 +245,18 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         {editMode ? (
           <EditControls areas={areas} saveMapToMower={saveMapToMower} />
         ) : (
-          <ControlButton position="top-left" icon={PencilIcon} title="Edit mode" onClick={() => setEditMode(true)} />
+          <>
+            <ControlButton position="top-left" icon={PencilIcon} title="Edit mode" onClick={() => setEditMode(true)} />
+            {!isAreaRecording && (
+              <ControlButton
+                position="top-left"
+                icon={RouteIcon}
+                title="Start area recording"
+                disabled={!canStartAreaRecording}
+                onClick={() => mowerForActions?.publishAction(START_AREA_RECORDING_ACTION)}
+              />
+            )}
+          </>
         )}
 
         {/* Right controls */}
@@ -262,7 +281,8 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
         <IssuesButton />
 
         {/* Overlays */}
-        {!isMobile && showAreaList && (
+        {!isMobile && isAreaRecording && <AreaRecordingPanel />}
+        {!isMobile && !isAreaRecording && showAreaList && (
           <Box
             sx={{
               position: 'absolute',
@@ -275,7 +295,8 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
             <AreasList areas={areas} onClose={() => setShowAreaList(false)} />
           </Box>
         )}
-        {isMobile && (
+        {isMobile && isAreaRecording && <AreaRecordingPanel variant="sheet" />}
+        {isMobile && !isAreaRecording && (
           <MapDialog
             open={showAreaList}
             onClose={() => setShowAreaList(false)}
@@ -298,7 +319,9 @@ export function MowerMap({mapData, saveMapToMower, sx}: MowerMapProps) {
           <DockingStationMarker key={station.id} station={station} datum={datumOrFallback} isDocked={isDocked} />
         ))}
         {mowerPosition && !isDocked && <MowerMarker position={mowerPosition} datum={datumOrFallback} />}
-        <TrackLayer visible={showTrackLayer && !editMode} pastTrack={pastTrack} loading={trackLoading} />
+        <TrackLayer visible={showTrackLayer} pastTrack={pastTrack} loading={trackLoading} dimmed={editMode} />
+        <StripePreviewLayer />
+        {datum && <MapOverlayLayer datum={datum} />}
         {showTeleop && <TeleopControls simulatorMode={manualDrive} />}
         <DialogOutlet />
       </RMap>

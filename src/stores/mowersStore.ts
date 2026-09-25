@@ -17,6 +17,7 @@ import {
   type MowerEventState,
 } from './mowerEvents';
 import {
+  actionInfosSchema,
   Area,
   AreaType,
   capabilitiesSchema,
@@ -26,17 +27,22 @@ import {
   LegacyMapData,
   legacyMapSchema,
   mapDefaults,
+  mapOverlaySchema,
   mapSchema,
   positionSchema,
   rosParamsSchema,
+  sensorInfosSchema,
   simStateSchema,
   stateDefaults,
   stateSchema,
+  type ActionInfo,
   type Capabilities,
   type Datum,
   type MapData,
+  type MapOverlay,
   type PositionWithAttributes,
   type RosParams,
+  type SensorInfo,
   type SimState,
   type StateOptionalPose,
   type TrackAttributes,
@@ -44,7 +50,7 @@ import {
 
 export type MqttStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline';
 
-class Mower {
+export class Mower {
   [immerable] = true;
 
   readonly id: string;
@@ -62,6 +68,14 @@ class Mower {
   track: TrackPipeline = new TrackPipeline();
   jobList: {job_id: string; epoch: number}[] | null = null;
   events: MowerEventState = mowerEventDefaults;
+  sensorInfos: SensorInfo[] = [];
+  // sensors/<id>/data is plain text, not JSON
+  sensorData: Record<string, string> = {};
+  // Which high-level commands are currently available, from actions/json —
+  // the authoritative live signal for which control buttons should be lit up.
+  actions: ActionInfo[] = [];
+  // Live in-progress area-recording polygon, from map_overlay/json.
+  mapOverlay: MapOverlay | null = null;
   // null until a retained sim/state/json message arrives — also used as the
   // "is this a simulator?" feature-detection flag.
   simState: SimState | null = null;
@@ -93,6 +107,15 @@ class Mower {
   publishTeleop(vx: number, vz: number) {
     const payload = BSON.serialize({vx, vz});
     this.mqttClient.publish(this.mqttPrefix + 'teleop', Buffer.from(payload.buffer));
+  }
+
+  /** Sends a high-level command by action_id (e.g. "mower_logic:idle/start_mowing"), same mechanism as the app's action buttons. */
+  hasAction(actionId: string): boolean {
+    return this.actions.some((a) => a.action_id === actionId && a.enabled);
+  }
+
+  publishAction(actionId: string) {
+    this.mqttClient.publish(this.mqttPrefix + 'action', actionId);
   }
 }
 
@@ -169,6 +192,10 @@ export const useMowersStore = create<MowersStore>()(
             client.subscribe(clientMower.prefix + 'params/json');
             client.subscribe(clientMower.prefix + 'events/json');
             client.subscribe(clientMower.prefix + 'sim/state/json');
+            client.subscribe(clientMower.prefix + 'sensor_infos/json');
+            client.subscribe(clientMower.prefix + 'sensors/+/data');
+            client.subscribe(clientMower.prefix + 'actions/json');
+            client.subscribe(clientMower.prefix + 'map_overlay/json');
             mowers[clientMower.idx].rpc.events.history
               .list()
               .then((dates) => {
@@ -271,6 +298,32 @@ export const useMowersStore = create<MowersStore>()(
                 const parsed = simStateSchema.safeParse(JSON.parse(payload.toString()));
                 if (parsed.success) {
                   state.mowers[idx].simState = parsed.data;
+                }
+              });
+            } else if (partialTopic === 'sensor_infos/json') {
+              set((state) => {
+                const parsed = sensorInfosSchema.safeParse(JSON.parse(payload.toString()));
+                if (parsed.success) {
+                  state.mowers[idx].sensorInfos = parsed.data;
+                }
+              });
+            } else if (partialTopic.startsWith('sensors/') && partialTopic.endsWith('/data')) {
+              const sensorId = partialTopic.slice('sensors/'.length, -'/data'.length);
+              set((state) => {
+                state.mowers[idx].sensorData[sensorId] = payload.toString();
+              });
+            } else if (partialTopic === 'actions/json') {
+              set((state) => {
+                const parsed = actionInfosSchema.safeParse(JSON.parse(payload.toString()));
+                if (parsed.success) {
+                  state.mowers[idx].actions = parsed.data;
+                }
+              });
+            } else if (partialTopic === 'map_overlay/json') {
+              set((state) => {
+                const parsed = mapOverlaySchema.safeParse(JSON.parse(payload.toString()));
+                if (parsed.success) {
+                  state.mowers[idx].mapOverlay = parsed.data;
                 }
               });
             }

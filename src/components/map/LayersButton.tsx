@@ -1,10 +1,13 @@
 'use client';
 
 import {useMapDisplayStore} from '@/stores/mapDisplayStore';
+import {useMowAngleCalibrationStore} from '@/stores/mowAngleCalibrationStore';
 import {useSelectedMower} from '@/stores/mowersStore';
 import type {Datum} from '@/stores/schemas';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import Popover from '@mui/material/Popover';
@@ -14,7 +17,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import {ChevronLeftIcon, ChevronRightIcon, ClockIcon, LayersIcon, RotateCcwIcon} from 'lucide-react';
 import {useRControl} from 'maplibre-react-components';
-import {useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 
 interface LayersButtonProps {
@@ -40,6 +43,14 @@ export default function LayersButton({datum, trackLoading, editMode}: LayersButt
   const hasPositionCapability = useSelectedMower((s) => s?.hasCapability('position') ?? false);
   const jobList = useSelectedMower((s) => s?.jobList ?? null);
   const liveJobId = useSelectedMower((s) => s?.track.attributes.job_id ?? null);
+  const mowerId = useSelectedMower((s) => s?.id ?? null);
+  const calibration = useMowAngleCalibrationStore((s) => (mowerId ? s.calibrations[mowerId] : undefined));
+  const clearCalibration = useMowAngleCalibrationStore((s) => s.clearCalibration);
+  const fetchCalibration = useMowAngleCalibrationStore((s) => s.fetchCalibration);
+
+  useEffect(() => {
+    if (mowerId) void fetchCalibration(mowerId);
+  }, [mowerId, fetchCalibration]);
 
   const jobListLoaded = jobList !== null;
   // Exclude the live job — it's represented by "Current" (server returns newest first)
@@ -139,11 +150,7 @@ export default function LayersButton({datum, trackLoading, editMode}: LayersButt
             <FormControlLabel
               sx={{mx: 0, px: 1, py: 0.5, width: '100%'}}
               control={
-                <Switch
-                  checked={showTrackLayer && !editMode}
-                  onChange={(e) => setShowTrackLayer(e.target.checked)}
-                  disabled={editMode}
-                />
+                <Switch checked={showTrackLayer} onChange={(e) => setShowTrackLayer(e.target.checked)} />
               }
               label={
                 <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
@@ -205,6 +212,31 @@ export default function LayersButton({datum, trackLoading, editMode}: LayersButt
                   </span>
                 </Tooltip>
               </Box>
+            )}
+
+            {/* Calibrating (setting the value) happens next to the angle slider in
+                AreaSettingsDialog, where the angle that was actually used is known for certain -
+                this is just a status readout + reset, available regardless of which job is being
+                viewed. */}
+            {calibration && (
+              <>
+                <Divider sx={{my: 1}} />
+                <Box sx={{display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.5}}>
+                  <Typography variant="caption" color="text.secondary">
+                    Mow-angle calibration: offset {calibration.offsetDeg.toFixed(1)}° (from a job mowed at{' '}
+                    {calibration.angleDegUsed}°)
+                  </Typography>
+                  <Button
+                    size="small"
+                    color="inherit"
+                    onClick={() => {
+                      if (mowerId) void clearCalibration(mowerId);
+                    }}
+                  >
+                    Reset
+                  </Button>
+                </Box>
+              </>
             )}
           </>
         )}
