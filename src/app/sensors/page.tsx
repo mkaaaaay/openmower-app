@@ -251,6 +251,48 @@ function BatterySummaryCard({sensorInfos}: {sensorInfos: SensorInfo[]}) {
   );
 }
 
+// One card instead of two separate "Motor off" cards when not mowing - Current and RPM are both
+// trivially 0 then, no need to say so twice.
+function MowMotorOffCard() {
+  const theme = useTheme();
+  return (
+    <Card sx={{...outerCardStyles(theme), minWidth: 160, flex: '1 0 160px'}}>
+      <CardContent sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 1}}>
+        <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 0.5}}>
+          Mow Motor
+        </Typography>
+        <Typography variant="h6" fontWeight="bold" color="text.primary">
+          Motor off
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CategorySection({category, sensors}: {category: string; sensors: SensorInfo[]}) {
+  const currentState = useSelectedMower((m) => m?.state.current_state);
+  const motorOff = category === 'Mow Motor' && currentState !== 'MOWING';
+
+  return (
+    <Box>
+      <Typography variant="subtitle2" color="text.secondary" sx={{mb: 1, textTransform: 'uppercase', letterSpacing: 0.5}}>
+        {category}
+      </Typography>
+      <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 2}}>
+        {category === 'Battery & Charging' ? (
+          <BatterySummaryCard sensorInfos={sensors} />
+        ) : motorOff ? (
+          <MowMotorOffCard />
+        ) : (
+          sensors
+            .filter((info) => !BATTERY_CATEGORY_SENSOR_IDS.has(info.sensor_id))
+            .map((info) => <SensorCard key={info.sensor_id} info={info} />)
+        )}
+      </Box>
+    </Box>
+  );
+}
+
 // isolated so this doesn't re-render the whole gauge grid on each tick
 function CriticalCountStat({sensorInfos}: {sensorInfos: SensorInfo[]}) {
   const sensorData = useSelectedMower((m) => m?.sensorData) ?? {};
@@ -302,20 +344,7 @@ export default function SensorsPage() {
         ) : (
           <Box sx={{display: 'flex', flexDirection: 'column', gap: 3}}>
             {groups.map(({category, sensors}) => (
-              <Box key={category}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{mb: 1, textTransform: 'uppercase', letterSpacing: 0.5}}>
-                  {category}
-                </Typography>
-                <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 2}}>
-                  {category === 'Battery & Charging' ? (
-                    <BatterySummaryCard sensorInfos={sensors} />
-                  ) : (
-                    sensors
-                      .filter((info) => !BATTERY_CATEGORY_SENSOR_IDS.has(info.sensor_id))
-                      .map((info) => <SensorCard key={info.sensor_id} info={info} />)
-                  )}
-                </Box>
-              </Box>
+              <CategorySection key={category} category={category} sensors={sensors} />
             ))}
           </Box>
         )}
