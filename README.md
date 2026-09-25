@@ -4,6 +4,10 @@ This is a completely new app for your OpenMower robotic lawnmower.
 
 At this time, "only" the map editor and some debug information are enabled.
 
+## This branch
+
+Just my own build, running it on my own mower, not affiliated with the official project. On top of the usual stuff there's a live sensor dashboard, a mow-angle preview when editing an area that calibrates itself off a track you've actually driven, and a dashboard mini-map that follows the mower while it's mowing and stays out of the way otherwise. Nothing else changed.
+
 # Installation
 
 > [!WARNING]
