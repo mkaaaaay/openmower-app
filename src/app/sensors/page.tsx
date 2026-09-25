@@ -269,9 +269,21 @@ function MowMotorOffCard() {
   );
 }
 
+// left/right ESC temps first (paired side by side), then the rest in whatever order they arrive
+const TEMPERATURE_SENSOR_ORDER = ['om_left_esc_temp', 'om_right_esc_temp'];
+
 function CategorySection({category, sensors}: {category: string; sensors: SensorInfo[]}) {
   const currentState = useSelectedMower((m) => m?.state.current_state);
   const motorOff = category === 'Mow Motor' && currentState !== 'MOWING';
+  const visible = sensors.filter((info) => !BATTERY_CATEGORY_SENSOR_IDS.has(info.sensor_id));
+  const sorted =
+    category === 'Temperatures'
+      ? [...visible].sort((a, b) => {
+          const ai = TEMPERATURE_SENSOR_ORDER.indexOf(a.sensor_id);
+          const bi = TEMPERATURE_SENSOR_ORDER.indexOf(b.sensor_id);
+          return (ai === -1 ? TEMPERATURE_SENSOR_ORDER.length : ai) - (bi === -1 ? TEMPERATURE_SENSOR_ORDER.length : bi);
+        })
+      : visible;
 
   return (
     <Box>
@@ -284,9 +296,7 @@ function CategorySection({category, sensors}: {category: string; sensors: Sensor
         ) : motorOff ? (
           <MowMotorOffCard />
         ) : (
-          sensors
-            .filter((info) => !BATTERY_CATEGORY_SENSOR_IDS.has(info.sensor_id))
-            .map((info) => <SensorCard key={info.sensor_id} info={info} />)
+          sorted.map((info) => <SensorCard key={info.sensor_id} info={info} />)
         )}
       </Box>
     </Box>
