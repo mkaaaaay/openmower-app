@@ -84,6 +84,9 @@ const NO_GPS_FIX_VALUE = 999;
 // (back on when mowing/undocking starts) to save power while parked/docked — so "no fix"
 // there is by design, not a signal problem
 const GPS_DISABLED_BY_DESIGN_STATES = new Set(['IDLE', 'DOCKING']);
+// blade motor only spins during MOWING — outside that, current/RPM are always 0 by design,
+// so a full gauge for an expected-zero reading is just noise
+const MOTOR_ACTIVITY_SENSOR_IDS = new Set(['om_mow_motor_current', 'om_mow_motor_rpm']);
 
 function isCritical(info: SensorInfo, raw: string | undefined, currentState: string | undefined): boolean {
   if (raw === undefined || info.value_type !== 'DOUBLE') return false;
@@ -143,13 +146,16 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
   // is_charging is only true while physically in the dock — a safe proxy, since IDLE alone can
   // also mean "paused out on the lawn", where GPS is off too but not because of the dock
   const inDockingStation = gpsOffByDesign && !!isCharging;
-  const displayValue = noGpsFix
-    ? gpsOffByDesign
-      ? 'GPS off'
-      : 'No fix'
-    : numericValue !== undefined
-      ? `${numericValue.toFixed(2)} ${formatUnit(info.unit)}`.trim()
-      : (raw ?? '–');
+  const motorOff = MOTOR_ACTIVITY_SENSOR_IDS.has(info.sensor_id) && currentState !== 'MOWING';
+  const displayValue = motorOff
+    ? 'Motor off'
+    : noGpsFix
+      ? gpsOffByDesign
+        ? 'GPS off'
+        : 'No fix'
+      : numericValue !== undefined
+        ? `${numericValue.toFixed(2)} ${formatUnit(info.unit)}`.trim()
+        : (raw ?? '–');
   const critical = isCritical(info, raw, currentState);
 
   return (
@@ -166,7 +172,7 @@ const SensorCard = memo(function SensorCard({info}: {info: SensorInfo}) {
             (Docking Station)
           </Typography>
         )}
-        <SensorGauge info={info} raw={raw} />
+        {!motorOff && <SensorGauge info={info} raw={raw} />}
       </CardContent>
     </Card>
   );
